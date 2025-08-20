@@ -3,6 +3,7 @@ FROM python:3.11-slim
 # 安装必要的依赖
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    xvfb \
     wget \
     ca-certificates \
     fonts-liberation \
