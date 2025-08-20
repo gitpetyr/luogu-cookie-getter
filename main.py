@@ -3,7 +3,7 @@ from ddddocr import DdddOcr
 from sys import platform
 from fastapi import FastAPI
 import DrissionPage
-import uvicorn,sys
+import uvicorn,sys,time
 from pyvirtualdisplay import Display
 
 display = Display(size=(1920, 1080))
