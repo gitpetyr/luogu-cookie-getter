@@ -161,7 +161,6 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
         try:
             page.wait.ele_displayed("@id=turnstile-container-login",timeout=3,raise_err=True)
             try:
-                page.wait(1)
                 getTurnstileToken(page)
                 page.wait(0.4)
                 page.ele("@id=btn-login").click()
@@ -185,9 +184,8 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
         res = {dic["name"]: dic["value"] for dic in cookies}
         return res
     finally:
-        pass
         # 确保浏览器页面在任务结束后关闭
-        # page.quit()
+        page.quit()
 
 
 @app.post("/getluogucookie")
