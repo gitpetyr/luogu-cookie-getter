@@ -63,11 +63,11 @@ def _get_luogu_cookie(username: str, password: str) -> dict:
     co = DrissionPage.ChromiumOptions()
     co.auto_port(True) 
     co.headless(True)
-    co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
     # co.set_user_agent(User_agent)
     co.set_argument('--no-sandbox')
     co.set_argument('--disable-dev-shm-usage')
-    co.set_user_agent()
+    # co.set_user_agent()
     co.add_extension("turnstilePatch")
     page = DrissionPage.ChromiumPage(co)
     
