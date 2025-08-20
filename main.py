@@ -34,25 +34,42 @@ def getTurnstileToken(page : DrissionPage.ChromiumPage):
     page.run_js("try { turnstile.reset() } catch(e) { }")
 
     turnstileResponse = None
-    
-    for i in range(0,15):
+
+    for i in range(0, 15):
         try:
             turnstileResponse = page.run_js("try { return turnstile.getResponse() } catch(e) { return null }")
             if turnstileResponse:
                 print("Cloudflare Turnstile accepted.")
                 return turnstileResponse
+            
             challengeSolution = page.ele("@name=cf-turnstile-response")
             challengeWrapper = challengeSolution.parent()
             challengeIframe = challengeWrapper.shadow_root.ele("tag:iframe")
+            
+            challengeIframe.run_js("""
+window.dtp = 1
+function getRandomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// old method wouldn't work on 4k screens
+
+let screenX = getRandomInt(800, 1200);
+let screenY = getRandomInt(400, 600);
+
+Object.defineProperty(MouseEvent.prototype, 'screenX', { value: screenX });
+
+Object.defineProperty(MouseEvent.prototype, 'screenY', { value: screenY });
+                        """)
+            
             challengeIframeBody = challengeIframe.ele("tag:body").shadow_root
             challengeButton = challengeIframeBody.ele("tag:input")
             challengeButton.click()
             print("Cloudflare Turnstile passing.")
         except:
             print("Cloudflare Turnstile failed.")
-            # page.wait(1.5)
-        page.wait(1.2)
-    # page.refresh()
+        time.sleep(1)
+    page.refresh()
     raise Exception("failed to solve turnstile")
 
 def _get_luogu_cookie(username: str, password: str) -> dict:
