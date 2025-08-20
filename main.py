@@ -6,7 +6,7 @@ import DrissionPage
 import uvicorn,sys,time
 from pyvirtualdisplay import Display
 
-display = Display(size=(1920, 1080))
+display = Display(size=(800, 600))
 display.start()
 
 # if platform == "linux" or platform == "linux2":
@@ -130,17 +130,17 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
     """
     co = DrissionPage.ChromiumOptions()
     co.auto_port(True) 
+    co.add_extension("turnstilePatch")
     # co.headless(True)
     # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
     # co.set_user_agent(User_agent)
     co.set_argument('--no-sandbox')
     co.set_argument('--disable-dev-shm-usage')
-    co.add_extension("turnstilePatch")
     page = DrissionPage.ChromiumPage(co)
     
     try:
         page.get("https://vjudge.net/")
-        page.wait.doc_loaded(timeout=10, raise_err=True)
+        page.wait.doc_loaded(timeout=7, raise_err=True)
         page.wait(0.3,0.4)
         # try:
         #     getTurnstileToken(page)
