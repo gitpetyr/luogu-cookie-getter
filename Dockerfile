@@ -57,4 +57,4 @@ COPY . .
 RUN pip install --no-cache-dir requests DrissionPage "fastapi[all]" "uvicorn[standard]" ddddocr
 
 # 启动服务
-CMD ["python -u main.py"]
+CMD ["python", "-u", "main.py"]
