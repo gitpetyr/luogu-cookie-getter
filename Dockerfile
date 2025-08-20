@@ -54,7 +54,7 @@ WORKDIR /app
 COPY . .
 
 # 安装Python依赖
-RUN pip install --no-cache-dir requests DrissionPage "fastapi[all]" "uvicorn[standard]" ddddocr
+RUN pip install --no-cache-dir requests DrissionPage "fastapi[all]" "uvicorn[standard]" ddddocr pyvirtualdisplay
 
 # 启动服务
 CMD ["python", "-u", "main.py"]
