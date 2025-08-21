@@ -285,6 +285,76 @@ def _get_loj_local_storage(username: str, password: str) -> dict:
         # 确保浏览器页面在任务结束后关闭
         page.quit()
 
+def _get_codeforces_cookie(username: str, password: str) -> dict:
+    """
+    同步的浏览器操作函数。
+    注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
+    """
+    co = DrissionPage.ChromiumOptions()
+    co.auto_port(True) 
+    co.add_extension("turnstilePatch")
+    # co.headless(True)
+    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+    # co.set_user_agent(User_agent)
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
+    page = DrissionPage.ChromiumPage(co)
+    
+    try:
+        page.get("https://codeforces.com/enter?back=%2F")
+        page.wait.doc_loaded(timeout=10, raise_err=True)
+        page.wait(0.3,0.4)
+        # try:
+        #     getTurnstileToken(page)
+        # except Exception:
+        #     pass
+
+        try :
+            getTurnstileToken(page)
+        except Exception:
+            pass
+        page.wait.ele_displayed("@id=finalize-button",timeout=5,raise_err=True)
+        page.ele("@id=finalize-button").click()
+        page.wait.ele_displayed("@id=handleOrEmail",timeout=20,raise_err=True)
+
+        page.ele("@id=handleOrEmail").input(username,clear=True)
+        page.ele("@id=password").input(password,clear=True)
+        page.ele("@id=remember").check()
+        page.wait(0.2,0.3)
+
+        page.ele("@class=submit").click()
+        try:
+            page.wait.url_change("https://codeforces.com/enter",exclude=True,timeout=7,raise_err=True)
+        except Exception:
+            return None
+
+        # page.wait.ele_displayed("@id=userNameDropdown",timeout=3,raise_err=True)
+        #userNameDropdown
+
+        page.refresh()
+        page.wait.doc_loaded()
+
+        # try :
+        #     getTurnstileToken(page)
+        # except Exception:
+        #     pass
+
+        # try:
+        #     getTurnstileToken(page)
+        # except Exception:
+        #     pass
+        try :
+            page.ele("@href:enter")
+        except Exception:
+            return None
+
+        cookies = page.cookies()
+        res = {dic["name"]: dic["value"] for dic in cookies}
+        return res
+    finally:
+        # 确保浏览器页面在任务结束后关闭
+        page.quit()
+
 @app.post("/getluogucookie")
 async def getluogucookie(username: str, password: str):
     # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
@@ -391,7 +461,32 @@ async def getloj_local_storage(username: str, password: str):
             print(f"An error occurred for loj user {username}: {e}")
             return {"status": "failed", "error": str(e), "result": None}
 
+@app.post("/get_codeforces_cookie")
+async def get_codeforces_cookie(username: str, password: str):
+    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+    print(f"Received request for codeforces user: {username}. Waiting for a slot...")
+    
+    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
+    async with semaphore:
+        print(f"Slot acquired for codeforces user: {username}. Starting browser task...")
+        try:
+            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
+            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
+            res = await asyncio.to_thread(_get_codeforces_cookie, username, password)
+            
+            # 检查登录是否成功
+            if res == None or "JSESSIONID" not in res or str(res.get("JSESSIONID")) == "":
+                print(f"Login failed for codeforces user: {username}.")
+                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+            
+            print(f"Successfully got cookie for codeforces user: {username}.")
+            return {"status": "success", "result": res}
+
+        except Exception as e:
+            print(f"An error occurred for codeforces user {username}: {e}")
+            return {"status": "failed", "error": str(e), "result": None}
+
 # 用于直接运行此文件
 if __name__ == "__main__":
-    # 建议使用 uvicorn 命令行来启动，例如: uvicorn your_file_name:app --workers 1 --host 0.0.0.0 --port 8000
+#     # 建议使用 uvicorn 命令行来启动，例如: uvicorn your_file_name:app --workers 1 --host 0.0.0.0 --port 8000
     uvicorn.run(app, workers=1, host="0.0.0.0", port=8000)
