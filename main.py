@@ -3,7 +3,7 @@ from ddddocr import DdddOcr
 from sys import platform
 from fastapi import FastAPI
 import DrissionPage
-import uvicorn,sys,time
+import uvicorn,sys,time,json
 from pyvirtualdisplay import Display
 
 display = Display(visible=0,size=(1200, 800))
@@ -248,6 +248,42 @@ def _get_becoder_cookie(username: str, password: str) -> dict:
         # 确保浏览器页面在任务结束后关闭
         page.quit()
 
+def _get_loj_local_storage(username: str, password: str) -> dict:
+    """
+    同步的浏览器操作函数。
+    注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
+    """
+    co = DrissionPage.ChromiumOptions()
+    co.auto_port(True) 
+    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+    # co.set_user_agent(User_agent)
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
+    co.headless(True)
+    # co.set_user_agent()
+    co.add_extension("turnstilePatch")
+    page = DrissionPage.ChromiumPage(co)
+    
+    try:
+        page.get("https://loj.ac/login?loginRedirectUrl=%2F")
+        page.wait.doc_loaded(timeout=2, raise_err=True)
+
+        page.ele("@autocomplete=username").input(username)
+        page.ele("@autocomplete=current-password").input(password+"\n\n")
+        
+        try:
+            page.wait.url_change("https://loj.ac/login",exclude=True,timeout=4,raise_err=True)
+        except Exception:
+            local_storage = page.local_storage("appState")
+            return local_storage
+        page.wait.doc_loaded()
+        page.wait(0.4,0.5)
+
+        local_storage = page.local_storage("appState")
+        return local_storage
+    finally:
+        # 确保浏览器页面在任务结束后关闭
+        page.quit()
 
 @app.post("/getluogucookie")
 async def getluogucookie(username: str, password: str):
@@ -322,6 +358,37 @@ async def getbecodercookie(username: str, password: str):
 
         except Exception as e:
             print(f"An error occurred for becoder user {username}: {e}")
+            return {"status": "failed", "error": str(e), "result": None}
+
+@app.post("/getloj_local_stor")
+async def getloj_local_storage(username: str, password: str):
+    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+    print(f"Received request for loj user: {username}. Waiting for a slot...")
+    
+    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
+    async with semaphore:
+        print(f"Slot acquired for loj user: {username}. Starting browser task...")
+        try:
+            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
+            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
+            res = await asyncio.to_thread(_get_loj_local_storage, username, password)
+
+            if res != None:
+                res = json.loads(res)
+            else:
+                print(f"Login failed for loj user: {username}.")
+                return {"status": "failed", "error": "Login failed, please check credentials.", "result": res}
+
+            # 检查登录是否成功
+            if "token" not in res or res["token"] == None or res["token"] == "":
+                print(f"Login failed for loj user: {username}.")
+                return {"status": "failed", "error": "Login failed, please check credentials.", "result": res}
+            
+            print(f"Successfully got local_storage for loj user: {username}.")
+            return {"status": "success", "result": res}
+
+        except Exception as e:
+            print(f"An error occurred for loj user {username}: {e}")
             return {"status": "failed", "error": str(e), "result": None}
 
 # 用于直接运行此文件
