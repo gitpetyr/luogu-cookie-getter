@@ -406,6 +406,49 @@ def _get_codeforces_cookie(username: str, password: str) -> dict:
         # 确保浏览器页面在任务结束后关闭
         page.quit()
 
+def _get_usaco_cookie(username: str, password: str) -> dict:
+    """
+    同步的浏览器操作函数。
+    注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
+    """
+    co = DrissionPage.ChromiumOptions()
+    co.auto_port(True) 
+    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+    # co.set_user_agent(User_agent)
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
+    co.headless(True)
+    # co.set_user_agent()
+    co.add_extension("turnstilePatch")
+    page = DrissionPage.ChromiumPage(co)
+    
+    try:
+        page.get("https://usaco.org/index.php")
+        page.wait.doc_loaded(timeout=2, raise_err=True)
+
+        page.ele("@name=uname").input(username)
+        page.ele("@name=password").input(password)
+
+        page.ele("@value=Login").click()
+
+        page.wait.load_start(2, False)
+
+        try:
+            page.wait.ele_displayed("@onclick:logout.php",timeout=4,raise_err=True)
+        except Exception:
+            return None
+        
+        page.wait.doc_loaded()
+        page.refresh()
+        page.wait.doc_loaded()
+
+        cookies = page.cookies() #session_token
+        res = {dic["name"]: dic["value"] for dic in cookies}
+        return res
+    finally:
+        # 确保浏览器页面在任务结束后关闭
+        page.quit()
+
 @app.post("/get_luogu_cookie")
 async def getluogucookie(username: str, password: str):
     # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
@@ -562,8 +605,33 @@ async def get_atcoder_cookie(username: str, password: str):
             print(f"An error occurred for atcoder user {username}: {e}")
             return {"status": "failed", "error": str(e), "result": None}
 
+@app.post("/get_usaco_cookie")
+async def get_usaco_cookie(username: str, password: str):
+    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+    print(f"Received request for usaco user: {username}. Waiting for a slot...")
+    
+    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
+    async with semaphore:
+        print(f"Slot acquired for usaco user: {username}. Starting browser task...")
+        try:
+            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
+            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
+            res = await asyncio.to_thread(_get_usaco_cookie, username, password)
+            
+            # 检查登录是否成功
+            if res == None or "PHPSESSID" not in res or str(res.get("PHPSESSID")) == "":
+                print(f"Login failed for usaco user: {username}.")
+                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+            
+            print(f"Successfully got cookie for usaco user: {username}.")
+            return {"status": "success", "result": res}
+
+        except Exception as e:
+            print(f"An error occurred for usaco user {username}: {e}")
+            return {"status": "failed", "error": str(e), "result": None}
+
 
 # 用于直接运行此文件
 if __name__ == "__main__":
-# #     # 建议使用 uvicorn 命令行来启动，例如: uvicorn your_file_name:app --workers 1 --host 0.0.0.0 --port 8000
+    # 建议使用 uvicorn 命令行来启动，例如: uvicorn your_file_name:app --workers 1 --host 0.0.0.0 --port 8000
     uvicorn.run(app, workers=1, host="0.0.0.0", port=8000)
