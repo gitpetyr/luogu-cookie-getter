@@ -6,7 +6,7 @@ import DrissionPage
 import uvicorn,sys,time
 from pyvirtualdisplay import Display
 
-display = Display(visible=0,size=(1200, 960))
+display = Display(visible=0,size=(1200, 600))
 display.start()
 
 # if platform == "linux" or platform == "linux2":
