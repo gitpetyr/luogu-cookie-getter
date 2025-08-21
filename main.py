@@ -355,7 +355,7 @@ def _get_codeforces_cookie(username: str, password: str) -> dict:
         # 确保浏览器页面在任务结束后关闭
         page.quit()
 
-@app.post("/getluogucookie")
+@app.post("/get_luogu_cookie")
 async def getluogucookie(username: str, password: str):
     # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
     print(f"Received request for luogu user: {username}. Waiting for a slot...")
@@ -380,8 +380,8 @@ async def getluogucookie(username: str, password: str):
             print(f"An error occurred for luogu user {username}: {e}")
             return {"status": "failed", "error": str(e), "result": None}
 
-@app.post("/getvjudgecookie")
-async def getvjudgecookie(username: str, password: str):
+@app.post("/get_vjudge_cookie")
+async def get_vjudge_cookie(username: str, password: str):
     # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
     print(f"Received request for vjudge user: {username}. Waiting for a slot...")
     
@@ -405,8 +405,8 @@ async def getvjudgecookie(username: str, password: str):
             print(f"An error occurred for vjudge user {username}: {e}")
             return {"status": "failed", "error": str(e), "result": None}
         
-@app.post("/getbecodercookie")
-async def getbecodercookie(username: str, password: str):
+@app.post("/get_becoder_cookie")
+async def get_becoder_cookie(username: str, password: str):
     # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
     print(f"Received request for becoder user: {username}. Waiting for a slot...")
     
