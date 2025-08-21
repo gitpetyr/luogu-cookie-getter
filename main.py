@@ -19,7 +19,7 @@ display.start()
 # User_agent = f"Mozilla/5.0 ({platformIdentifier}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 
 # 控制并发数量
-semaphore = asyncio.Semaphore(5)
+semaphore = asyncio.Semaphore(6)
 
 # DdddOcr 实例，全局共享，它是线程安全的
 cl = DdddOcr(show_ad=False)
@@ -449,6 +449,92 @@ def _get_usaco_cookie(username: str, password: str) -> dict:
         # 确保浏览器页面在任务结束后关闭
         page.quit()
 
+def _get_uoj_cookie(username: str, password: str) -> dict:
+    """
+    同步的浏览器操作函数。
+    注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
+    """
+    co = DrissionPage.ChromiumOptions()
+    co.auto_port(True) 
+    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+    # co.set_user_agent(User_agent)
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
+    co.headless(True)
+    # co.set_user_agent()
+    co.add_extension("turnstilePatch")
+    page = DrissionPage.ChromiumPage(co)
+    
+    try:
+        page.get("https://uoj.ac/login")
+        page.wait.doc_loaded(timeout=2, raise_err=True)
+
+        page.ele("@id=input-username").input(username)
+        page.ele("@id=input-password").input(password)
+
+        page.ele("@id=button-submit").click()
+
+        page.wait(0.4)
+
+        try:
+            page.wait.url_change("https://uoj.ac/login",exclude=True,timeout=1.5,raise_err=True)
+        except Exception:
+            return None
+        
+        page.wait.doc_loaded()
+        page.refresh()
+        page.wait.doc_loaded()
+
+        cookies = page.cookies() #session_token
+        res = {dic["name"]: dic["value"] for dic in cookies}
+        return res
+    finally:
+        # 确保浏览器页面在任务结束后关闭
+        page.quit()
+
+def _get_qoj_cookie(username: str, password: str) -> dict:
+    """
+    同步的浏览器操作函数。
+    注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
+    """
+    co = DrissionPage.ChromiumOptions()
+    co.auto_port(True) 
+    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+    # co.set_user_agent(User_agent)
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
+    # co.headless(True)
+    # co.set_user_agent()
+    co.add_extension("turnstilePatch")
+    page = DrissionPage.ChromiumPage(co)
+    
+    try:
+        page.get("https://qoj.ac/login")
+        page.wait.doc_loaded(timeout=2, raise_err=True)
+
+        page.ele("@id=input-username").input(username)
+        page.ele("@id=input-password").input(password)
+
+        page.ele("@id=button-submit").click()
+
+        page.wait(0.4)
+
+        try:
+            page.wait.url_change("https://qoj.ac/login",exclude=True,timeout=1.6,raise_err=True)
+        except Exception:
+            return None
+        
+        page.wait.doc_loaded()
+        page.refresh()
+        page.wait.doc_loaded()
+
+        cookies = page.cookies() #session_token
+        res = {dic["name"]: dic["value"] for dic in cookies}
+        return res
+    finally:
+        # 确保浏览器页面在任务结束后关闭
+        page.quit()
+
 @app.post("/get_luogu_cookie")
 async def getluogucookie(username: str, password: str):
     # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
@@ -629,7 +715,56 @@ async def get_usaco_cookie(username: str, password: str):
         except Exception as e:
             print(f"An error occurred for usaco user {username}: {e}")
             return {"status": "failed", "error": str(e), "result": None}
+        
+@app.post("/get_uoj_cookie")
+async def get_uoj_cookie(username: str, password: str):
+    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+    print(f"Received request for uoj user: {username}. Waiting for a slot...")
+    
+    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
+    async with semaphore:
+        print(f"Slot acquired for uoj user: {username}. Starting browser task...")
+        try:
+            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
+            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
+            res = await asyncio.to_thread(_get_uoj_cookie, username, password)
+            
+            # 检查登录是否成功
+            if res == None or "UOJSESSID" not in res or str(res.get("UOJSESSID")) == "" or "uoj_remember_token" not in res or str(res.get("uoj_remember_token")) == "" :
+                print(f"Login failed for uoj user: {username}.")
+                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+            
+            print(f"Successfully got cookie for uoj user: {username}.")
+            return {"status": "success", "result": res}
 
+        except Exception as e:
+            print(f"An error occurred for uoj user {username}: {e}")
+            return {"status": "failed", "error": str(e), "result": None}
+        
+@app.post("/get_qoj_cookie")
+async def get_qoj_cookie(username: str, password: str):
+    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+    print(f"Received request for qoj user: {username}. Waiting for a slot...")
+    
+    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
+    async with semaphore:
+        print(f"Slot acquired for qoj user: {username}. Starting browser task...")
+        try:
+            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
+            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
+            res = await asyncio.to_thread(_get_qoj_cookie, username, password)
+            
+            # 检查登录是否成功
+            if res == None or "UOJSESSID" not in res or str(res.get("UOJSESSID")) == "" or "uoj_remember_token" not in res or str(res.get("uoj_remember_token")) == "" :
+                print(f"Login failed for qoj user: {username}.")
+                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+            
+            print(f"Successfully got cookie for qoj user: {username}.")
+            return {"status": "success", "result": res}
+
+        except Exception as e:
+            print(f"An error occurred for qoj user {username}: {e}")
+            return {"status": "failed", "error": str(e), "result": None}
 
 # 用于直接运行此文件
 if __name__ == "__main__":
