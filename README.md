@@ -41,10 +41,9 @@ curl -X POST "http://127.0.0.1:8000/getluogucookie?username=your_username&passwo
 {
   "status": "success",
   "result": {
+    "C3VK": "...",
     "__client_id": "...",
-    "__user_id": "...",
-    "_uid": "...",
-    "LuoguSessionID": "..."
+    "_uid": "..."
   }
 }
 ```
@@ -88,7 +87,8 @@ curl -X POST "http://127.0.0.1:8000/getvjudgecookie?username=your_username&passw
   "result": {
     "JSESSIONID": "...",
     "JSESSIONlD": "...",
-    "JSESSlONID": "..."
+    "JSESSlONID": "...",
+    ...
   }
 }
 ```
