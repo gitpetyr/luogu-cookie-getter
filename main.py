@@ -1,12 +1,18 @@
 import asyncio
-from ddddocr import DdddOcr
+import json
+import sys
+import time
 from sys import platform
-from fastapi import FastAPI
+from typing import Dict, Optional, Any
+
 import DrissionPage
-import uvicorn,sys,time,json
+import uvicorn
+from ddddocr import DdddOcr
+from fastapi import Body, FastAPI
+from pydantic import BaseModel
 from pyvirtualdisplay import Display
 
-display = Display(visible=0,size=(1200, 800))
+display = Display(visible=0, size=(1200, 800))
 display.start()
 
 # if platform == "linux" or platform == "linux2":
@@ -24,13 +30,11 @@ semaphore = asyncio.Semaphore(6)
 # DdddOcr 实例，全局共享，它是线程安全的
 cl = DdddOcr(show_ad=False)
 
-app = FastAPI()
-
 def ocr(image: bytes):
     """同步的 OCR 识别函数"""
     return cl.classification(image)
 
-def getTurnstileToken(page : DrissionPage.ChromiumPage):
+def getTurnstileToken(page: DrissionPage.ChromiumPage):
     page.run_js("try { turnstile.reset() } catch(e) { }")
 
     turnstileResponse = None
@@ -72,21 +76,24 @@ Object.defineProperty(MouseEvent.prototype, 'screenY', { value: screenY });
     page.refresh()
     raise Exception("failed to solve turnstile")
 
+def create_chromium_page(headless: bool = True) -> DrissionPage.ChromiumPage:
+    co = DrissionPage.ChromiumOptions()
+    co.auto_port(True)
+    # co.set_user_agent(User_agent)
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
+    co.add_extension("turnstilePatch")
+    co.set_timeouts(base=20)
+    if headless:
+        co.headless(True)
+    return DrissionPage.ChromiumPage(co)
+
 def _get_luogu_cookie(username: str, password: str) -> dict:
     """
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    co.headless(True)
-    # co.set_user_agent()
-    co.add_extension("turnstilePatch")
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=True)
     
     try:
         page.get("https://www.luogu.com.cn/auth/login")
@@ -101,12 +108,9 @@ def _get_luogu_cookie(username: str, password: str) -> dict:
         page.wait(0.8,1) 
         
         captcha_img = page.ele("@src:captcha")
-        # print(captcha_img)
         captcha_input = captcha_img.parent().prev()
         captcha_code = ocr(captcha_img.src(base64_to_bytes=True))
         print(f"User: {username}, Captcha: {captcha_code}")
-        
-        # open("xxx.png","wb").write(captcha_img.src(base64_to_bytes=True)) # 用于调试
         
         captcha_input.input(captcha_code)
         page.ele("@class:solid").click()
@@ -128,24 +132,12 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    co.add_extension("turnstilePatch")
-    # co.headless(True)
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=False)
     
     try:
         page.get("https://vjudge.net/")
         page.wait.doc_loaded(timeout=10, raise_err=True)
         page.wait(0.3,0.4)
-        # try:
-        #     getTurnstileToken(page)
-        # except Exception:
-        #     pass
 
         page.ele("@class:login").click()
 
@@ -157,8 +149,7 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
         page.wait(0.2,0.4)
 
         page.ele("@id=btn-login").click()
-        # page.wait.ele_displayed("@id=userNameDropdown",timeout=3,raise_err=True)
-        #userNameDropdown
+
         try:
             st=page.wait.ele_displayed("@name=cf-turnstile-response",timeout=3,raise_err=True)
             print(st)
@@ -177,12 +168,7 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
         page.refresh()
         page.wait.doc_loaded()
 
-        # try:
-        #     getTurnstileToken(page)
-        # except Exception:
-        #     pass
-
-        cookies = page.cookies() # JSESSIONID JSESSIONlD JSESSlONID
+        cookies = page.cookies()
         res = {dic["name"]: dic["value"] for dic in cookies}
         return res
     finally:
@@ -194,16 +180,7 @@ def _get_becoder_cookie(username: str, password: str) -> dict:
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    co.headless(True)
-    # co.set_user_agent()
-    co.add_extension("turnstilePatch")
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=True)
     
     try:
         page.get("https://www.becoder.com.cn/login?url=%2Findex")
@@ -220,13 +197,9 @@ def _get_becoder_cookie(username: str, password: str) -> dict:
         captcha_img = page.ele("@class=verification-code")
         print(captcha_img)
         img = captcha_img.get_screenshot(as_bytes='png')
-        # open("xxx.png","wb").write(img)
-        # print(captcha_img)
         captcha_input = page.ele("@id=captcha")
         captcha_code = ocr(img)
         print(f"User: {username}, Captcha: {captcha_code}")
-        
-        # open("xxx.png","wb").write(captcha_img.src(base64_to_bytes=True)) # 用于调试
         
         captcha_input.input(captcha_code)
         page.ele("@id=login-btn").click()
@@ -234,14 +207,14 @@ def _get_becoder_cookie(username: str, password: str) -> dict:
         try :
             page.wait.url_change("https://www.becoder.com.cn/index",timeout=4,raise_err=True)
         except Exception:
-            cookies = page.cookies() #session_token
+            cookies = page.cookies()
             res = {dic["name"]: dic["value"] for dic in cookies}
             return res
         # 等待页面跳转和加载完成
         page.wait.doc_loaded()
         page.wait(0.4,0.6)
 
-        cookies = page.cookies() #session_token
+        cookies = page.cookies()
         res = {dic["name"]: dic["value"] for dic in cookies}
         return res
     finally:
@@ -253,16 +226,7 @@ def _get_loj_local_storage(username: str, password: str) -> dict:
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    co.headless(True)
-    # co.set_user_agent()
-    co.add_extension("turnstilePatch")
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=True)
     
     try:
         page.get("https://loj.ac/login?loginRedirectUrl=%2F")
@@ -290,15 +254,7 @@ def _get_atcoder_cookie(username: str, password: str) -> dict:
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    co.add_extension("turnstilePatch")
-    # co.headless(True)
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=False)
     
     try:
         page.get("https://atcoder.jp/login?continue=https%3A%2F%2Fatcoder.jp%2F")
@@ -307,8 +263,8 @@ def _get_atcoder_cookie(username: str, password: str) -> dict:
 
         page.wait.ele_displayed("@id=username",timeout=3,raise_err=True)
 
-        page.ele("@id=username").input(username,clear=True)
-        page.ele("@id=password").input(password,clear=True)
+        page.ele("@id=username").input(username)
+        page.ele("@id=password").input(password)
         page.wait(0.3,0.4)
 
         try :
@@ -341,24 +297,12 @@ def _get_codeforces_cookie(username: str, password: str) -> dict:
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    co.add_extension("turnstilePatch")
-    # co.headless(True)
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=False)
     
     try:
         page.get("https://codeforces.com/enter?back=%2F")
         page.wait.doc_loaded(timeout=10, raise_err=True)
         page.wait(0.3,0.4)
-        # try:
-        #     getTurnstileToken(page)
-        # except Exception:
-        #     pass
 
         try :
             getTurnstileToken(page)
@@ -368,8 +312,8 @@ def _get_codeforces_cookie(username: str, password: str) -> dict:
         page.ele("@id=finalize-button").click()
         page.wait.ele_displayed("@id=handleOrEmail",timeout=20,raise_err=True)
 
-        page.ele("@id=handleOrEmail").input(username,clear=True)
-        page.ele("@id=password").input(password,clear=True)
+        page.ele("@id=handleOrEmail").input(username)
+        page.ele("@id=password").input(password)
         page.ele("@id=remember").check()
         page.wait(0.2,0.3)
 
@@ -379,21 +323,9 @@ def _get_codeforces_cookie(username: str, password: str) -> dict:
         except Exception:
             return None
 
-        # page.wait.ele_displayed("@id=userNameDropdown",timeout=3,raise_err=True)
-        #userNameDropdown
-
         page.refresh()
         page.wait.doc_loaded()
 
-        # try :
-        #     getTurnstileToken(page)
-        # except Exception:
-        #     pass
-
-        # try:
-        #     getTurnstileToken(page)
-        # except Exception:
-        #     pass
         try :
             page.ele("@href:enter")
         except Exception:
@@ -411,16 +343,7 @@ def _get_usaco_cookie(username: str, password: str) -> dict:
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    co.headless(True)
-    # co.set_user_agent()
-    co.add_extension("turnstilePatch")
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=True)
     
     try:
         page.get("https://usaco.org/index.php")
@@ -442,7 +365,7 @@ def _get_usaco_cookie(username: str, password: str) -> dict:
         page.refresh()
         page.wait.doc_loaded()
 
-        cookies = page.cookies() #session_token
+        cookies = page.cookies()
         res = {dic["name"]: dic["value"] for dic in cookies}
         return res
     finally:
@@ -454,16 +377,7 @@ def _get_uoj_cookie(username: str, password: str) -> dict:
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    co.headless(True)
-    # co.set_user_agent()
-    co.add_extension("turnstilePatch")
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=True)
     
     try:
         page.get("https://uoj.ac/login")
@@ -485,7 +399,7 @@ def _get_uoj_cookie(username: str, password: str) -> dict:
         page.refresh()
         page.wait.doc_loaded()
 
-        cookies = page.cookies() #session_token
+        cookies = page.cookies()
         res = {dic["name"]: dic["value"] for dic in cookies}
         return res
     finally:
@@ -497,16 +411,7 @@ def _get_qoj_cookie(username: str, password: str) -> dict:
     同步的浏览器操作函数。
     注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
     """
-    co = DrissionPage.ChromiumOptions()
-    co.auto_port(True) 
-    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-    # co.set_user_agent(User_agent)
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
-    # co.headless(True)
-    # co.set_user_agent()
-    co.add_extension("turnstilePatch")
-    page = DrissionPage.ChromiumPage(co)
+    page = create_chromium_page(headless=False)
     
     try:
         page.get("https://qoj.ac/login")
@@ -528,245 +433,275 @@ def _get_qoj_cookie(username: str, password: str) -> dict:
         page.refresh()
         page.wait.doc_loaded()
 
-        cookies = page.cookies() #session_token
+        cookies = page.cookies()
         res = {dic["name"]: dic["value"] for dic in cookies}
         return res
     finally:
         # 确保浏览器页面在任务结束后关闭
         page.quit()
 
-@app.post("/get_luogu_cookie")
-async def getluogucookie(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class ApiResponse(BaseModel):
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+app = FastAPI(
+    title="Websites Cookie Fetcher API",
+    description="An API service that automates browser-based login to various Websites and retrieves authentication cookies or local storage data. Supports concurrency control and CAPTCHA handling via OCR.",
+    version="1.0.0",
+    openapi_tags=[
+        {"name": "Cookies", "description": "Endpoints for fetching cookies from Websites."}
+    ]
+)
+
+@app.post(
+    "/get_luogu_cookie",
+    response_model=ApiResponse,
+    summary="Fetch Luogu Cookie",
+    description="Automates login to Luogu using provided credentials, handles CAPTCHA via OCR, and returns the authentication cookie if successful.",
+    tags=["Cookies"]
+)
+async def get_luogu_cookie(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for luogu user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for luogu user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
             res = await asyncio.to_thread(_get_luogu_cookie, username, password)
             
-            # 检查登录是否成功
             if "_uid" not in res or str(res.get("_uid")) == "0":
                 print(f"Login failed for luogu user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials or captcha.")
             
             print(f"Successfully got cookie for luogu user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for luogu user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
+            return ApiResponse(status="failed", error=str(e))
 
-@app.post("/get_vjudge_cookie")
-async def get_vjudge_cookie(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+@app.post(
+    "/get_vjudge_cookie",
+    response_model=ApiResponse,
+    summary="Fetch VJudge Cookie",
+    description="Automates login to VJudge, handles potential Cloudflare challenges, and returns the authentication cookie if successful.",
+    tags=["Cookies"]
+)
+async def get_vjudge_cookie(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for vjudge user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for vjudge user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
             res = await asyncio.to_thread(_get_vjudge_cookie, username, password)
             
-            # 检查登录是否成功
             if "JSESSIONlD" not in res or str(res.get("JSESSIONlD")) == "":
                 print(f"Login failed for vjudge user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials or captcha.")
             
             print(f"Successfully got cookie for vjudge user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for vjudge user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
-        
-@app.post("/get_becoder_cookie")
-async def get_becoder_cookie(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+            return ApiResponse(status="failed", error=str(e))
+
+@app.post(
+    "/get_becoder_cookie",
+    response_model=ApiResponse,
+    summary="Fetch BeCoder Cookie",
+    description="Automates login to BeCoder using provided credentials, handles CAPTCHA via OCR, and returns the authentication cookie if successful.",
+    tags=["Cookies"]
+)
+async def get_becoder_cookie(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for becoder user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for becoder user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
             res = await asyncio.to_thread(_get_becoder_cookie, username, password)
             
-            # 检查登录是否成功
             if "session_token" not in res or str(res.get("session_token")) == "":
                 print(f"Login failed for becoder user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials or captcha.")
             
             print(f"Successfully got cookie for becoder user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for becoder user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
+            return ApiResponse(status="failed", error=str(e))
 
-@app.post("/getloj_local_stor")
-async def getloj_local_storage(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+@app.post(
+    "/get_loj_local_stor",
+    response_model=ApiResponse,
+    summary="Fetch LOJ Local Storage",
+    description="Automates login to LOJ and retrieves the local storage data (appState) if successful.",
+    tags=["Cookies"]
+)
+async def get_loj_local_stor(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for loj user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for loj user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
-            res = await asyncio.to_thread(_get_loj_local_storage, username, password)
+            res_str = await asyncio.to_thread(_get_loj_local_storage, username, password)
+            res = json.loads(res_str) if res_str is not None else None
 
-            if res != None:
-                res = json.loads(res)
-            else:
+            if res is None or "token" not in res or not res["token"]:
                 print(f"Login failed for loj user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials.", "result": res}
-
-            # 检查登录是否成功
-            if "token" not in res or res["token"] == None or res["token"] == "":
-                print(f"Login failed for loj user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials.")
             
             print(f"Successfully got local_storage for loj user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for loj user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
+            return ApiResponse(status="failed", error=str(e))
 
-@app.post("/get_codeforces_cookie")
-async def get_codeforces_cookie(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+@app.post(
+    "/get_codeforces_cookie",
+    response_model=ApiResponse,
+    summary="Fetch Codeforces Cookie",
+    description="Automates login to Codeforces, handles potential Cloudflare challenges, and returns the authentication cookie if successful.",
+    tags=["Cookies"]
+)
+async def get_codeforces_cookie(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for codeforces user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for codeforces user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
             res = await asyncio.to_thread(_get_codeforces_cookie, username, password)
             
-            # 检查登录是否成功
-            if res == None or "JSESSIONID" not in res or str(res.get("JSESSIONID")) == "":
+            if res is None or "JSESSIONID" not in res or str(res.get("JSESSIONID")) == "":
                 print(f"Login failed for codeforces user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials or captcha.")
             
             print(f"Successfully got cookie for codeforces user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for codeforces user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
+            return ApiResponse(status="failed", error=str(e))
 
-@app.post("/get_atcoder_cookie")
-async def get_atcoder_cookie(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+@app.post(
+    "/get_atcoder_cookie",
+    response_model=ApiResponse,
+    summary="Fetch AtCoder Cookie",
+    description="Automates login to AtCoder, handles potential Cloudflare challenges, and returns the authentication cookie if successful.",
+    tags=["Cookies"]
+)
+async def get_atcoder_cookie(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for atcoder user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for atcoder user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
             res = await asyncio.to_thread(_get_atcoder_cookie, username, password)
             
-            # 检查登录是否成功
-            if res == None or "REVEL_SESSION" not in res or str(res.get("REVEL_SESSION")) == "":
+            if res is None or "REVEL_SESSION" not in res or str(res.get("REVEL_SESSION")) == "":
                 print(f"Login failed for atcoder user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials or captcha.")
             
             print(f"Successfully got cookie for atcoder user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for atcoder user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
+            return ApiResponse(status="failed", error=str(e))
 
-@app.post("/get_usaco_cookie")
-async def get_usaco_cookie(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+@app.post(
+    "/get_usaco_cookie",
+    response_model=ApiResponse,
+    summary="Fetch USACO Cookie",
+    description="Automates login to USACO and returns the authentication cookie if successful.",
+    tags=["Cookies"]
+)
+async def get_usaco_cookie(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for usaco user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for usaco user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
             res = await asyncio.to_thread(_get_usaco_cookie, username, password)
             
-            # 检查登录是否成功
-            if res == None or "PHPSESSID" not in res or str(res.get("PHPSESSID")) == "":
+            if res is None or "PHPSESSID" not in res or str(res.get("PHPSESSID")) == "":
                 print(f"Login failed for usaco user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials or captcha.")
             
             print(f"Successfully got cookie for usaco user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for usaco user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
-        
-@app.post("/get_uoj_cookie")
-async def get_uoj_cookie(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+            return ApiResponse(status="failed", error=str(e))
+
+@app.post(
+    "/get_uoj_cookie",
+    response_model=ApiResponse,
+    summary="Fetch UOJ Cookie",
+    description="Automates login to UOJ and returns the authentication cookie if successful.",
+    tags=["Cookies"]
+)
+async def get_uoj_cookie(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for uoj user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for uoj user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
             res = await asyncio.to_thread(_get_uoj_cookie, username, password)
             
-            # 检查登录是否成功
-            if res == None or "UOJSESSID" not in res or str(res.get("UOJSESSID")) == "" or "uoj_remember_token" not in res or str(res.get("uoj_remember_token")) == "" :
+            if res is None or "UOJSESSID" not in res or str(res.get("UOJSESSID")) == "" or "uoj_remember_token" not in res or str(res.get("uoj_remember_token")) == "":
                 print(f"Login failed for uoj user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials or captcha.")
             
             print(f"Successfully got cookie for uoj user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for uoj user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
-        
-@app.post("/get_qoj_cookie")
-async def get_qoj_cookie(username: str, password: str):
-    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+            return ApiResponse(status="failed", error=str(e))
+
+@app.post(
+    "/get_qoj_cookie",
+    response_model=ApiResponse,
+    summary="Fetch QOJ Cookie",
+    description="Automates login to QOJ and returns the authentication cookie if successful.",
+    tags=["Cookies"]
+)
+async def get_qoj_cookie(request: LoginRequest = Body(...)):
+    username = request.username
+    password = request.password
     print(f"Received request for qoj user: {username}. Waiting for a slot...")
     
-    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
     async with semaphore:
         print(f"Slot acquired for qoj user: {username}. Starting browser task...")
         try:
-            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
-            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
             res = await asyncio.to_thread(_get_qoj_cookie, username, password)
             
-            # 检查登录是否成功
-            if res == None or "UOJSESSID" not in res or str(res.get("UOJSESSID")) == "" or "uoj_remember_token" not in res or str(res.get("uoj_remember_token")) == "" :
+            if res is None or "UOJSESSID" not in res or str(res.get("UOJSESSID")) == "" or "uoj_remember_token" not in res or str(res.get("uoj_remember_token")) == "":
                 print(f"Login failed for qoj user: {username}.")
-                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+                return ApiResponse(status="failed", error="Login failed, please check credentials or captcha.")
             
             print(f"Successfully got cookie for qoj user: {username}.")
-            return {"status": "success", "result": res}
-
+            return ApiResponse(status="success", result=res)
         except Exception as e:
             print(f"An error occurred for qoj user {username}: {e}")
-            return {"status": "failed", "error": str(e), "result": None}
+            return ApiResponse(status="failed", error=str(e))
 
 # 用于直接运行此文件
 if __name__ == "__main__":
-    # 建议使用 uvicorn 命令行来启动，例如: uvicorn your_file_name:app --workers 1 --host 0.0.0.0 --port 8000
     uvicorn.run(app, workers=1, host="0.0.0.0", port=8000)
