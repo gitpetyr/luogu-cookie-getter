@@ -1,116 +1,244 @@
-# luogu-cookie-getter
-luogu-cookie-getter API
+# Luogu Cookie Getter API
 
-## 项目简介
+Luogu Cookie Getter 是一个基于 FastAPI 的自动化服务，用于通过浏览器自动化登录各大在线评测平台（Online Judge, OJ），获取用户认证 Cookie 或 Local Storage 数据。支持并发控制、验证码识别（通过 OCR）以及 Cloudflare Turnstile 挑战处理。
 
-本项目是一个基于 FastAPI 和 DrissionPage 的 **API 服务**，旨在自动化获取洛谷（Luogu）和 VJudge 平台的登录 Cookies。它利用无头浏览器技术模拟用户登录流程，并能通过各种人机验证，最终返回登录成功后的 Cookies。
+## 功能概述
 
-### 核心功能
+本服务通过模拟浏览器操作，自动完成登录流程，获取用户认证信息（Cookie 或 Local Storage）。支持以下在线评测平台：
 
-  * **自动化登录**：模拟用户输入用户名、密码和验证码，完成洛谷和 VJudge 的登录过程。
-  * **验证码识别**：集成 DdddOcr，能够自动识别常见的图片验证码。
-  * **并发控制**：使用 `asyncio.Semaphore` 控制浏览器实例的并发数量，避免因资源耗尽导致服务崩溃。
-  * **异步处理**：通过 `asyncio.to_thread` 将同步的浏览器操作放入单独的线程中执行，确保 FastAPI 的主事件循环不会被阻塞，从而提升 API 的响应性能和吞吐量。
+- 洛谷 (Luogu)
+- VJudge
+- BeCoder
+- LibreOJ (LOJ)
+- Codeforces
+- AtCoder
+- USACO
+- UOJ
+- QOJ
 
-## API 调用指南
+## 支持的网站及操作说明
 
-本项目提供了两个主要 API 端点，分别用于获取洛谷和 VJudge 的 Cookies。
+以下是支持的在线评测平台及其对应的 API 端点和操作说明：
 
-### 1\. 获取洛谷（Luogu）Cookies
+| 平台          | API 端点                      | 操作说明                                                     |
+| ------------- | ----------------------------- | ------------------------------------------------------------ |
+| 洛谷 (Luogu)  | `POST /get_luogu_cookie`      | 访问登录页面，输入用户名和密码，识别验证码并提交，获取认证 Cookie（包含 `_uid`）。 |
+| VJudge        | `POST /get_vjudge_cookie`     | 访问登录页面，处理可能的 Cloudflare 挑战，输入用户名和密码，获取 Cookie（包含 `JSESSIONlD`）。 |
+| BeCoder       | `POST /get_becoder_cookie`    | 访问登录页面，输入用户名和密码，识别验证码并提交，获取 Cookie（包含 `session_token`）。 |
+| LibreOJ (LOJ) | `POST /get_loj_local_stor`    | 访问登录页面，输入用户名和密码，获取 Local Storage 数据（`appState` 中的 `token`）。 |
+| Codeforces    | `POST /get_codeforces_cookie` | 访问登录页面，处理 Cloudflare 挑战，输入用户名和密码，获取 Cookie（包含 `JSESSIONID`）。 |
+| AtCoder       | `POST /get_atcoder_cookie`    | 访问登录页面，处理 Cloudflare 挑战，输入用户名和密码，获取 Cookie（包含 `REVEL_SESSION`）。 |
+| USACO         | `POST /get_usaco_cookie`      | 访问登录页面，输入用户名和密码，提交后获取 Cookie（包含 `PHPSESSID`）。 |
+| UOJ           | `POST /get_uoj_cookie`        | 访问登录页面，输入用户名和密码，提交后获取 Cookie（包含 `UOJSESSID` 和 `uoj_remember_token`）。 |
+| QOJ           | `POST /get_qoj_cookie`        | 访问登录页面，输入用户名和密码，提交后获取 Cookie（包含 `UOJSESSID` 和 `uoj_remember_token`）。 |
 
-该 API 用于通过用户名和密码登录洛谷，并返回登录成功后的 Cookies。
+**注意**：
 
-  * **URL**：`/getluogucookie`
-  * **方法**：`POST`
-  * **参数**：
-      * `username`（string）：洛谷账号的用户名。
-      * `password`（string）：洛谷账号的密码。
-  * **请求示例**：
+- 每个平台的登录操作都会验证 Cookie 或 Local Storage 的有效性，确保登录成功。
+- 如果登录失败（例如验证码错误或凭据无效），API 将返回错误信息。
+- 服务使用 OCR（DdddOcr）处理验证码，使用 DrissionPage 模拟浏览器操作。
 
-<!-- end list -->
+## API 文档
 
+### 请求格式
+
+所有 API 端点均接受 `POST` 请求，请求体为 JSON 格式，包含以下字段：
+
+```json
+{
+  "username": "your_username",
+  "password": "your_password"
+}
 ```
-curl -X POST "http://127.0.0.1:8000/getluogucookie?username=your_username&password=your_password"
-```
 
-  * **成功响应**：
+### 响应格式
 
-<!-- end list -->
+响应为 JSON 格式，包含以下字段：
+
+- `status`: 字符串，表示操作结果（`"success"` 或 `"failed"`）。
+- `result`: 对象，包含获取到的 Cookie 或 Local Storage 数据（成功时返回，失败时可能为 `null` 或部分数据）。
+- `error`: 字符串，错误信息（成功时为 `null`，失败时提供错误原因）。
+
+示例响应（成功）：
 
 ```json
 {
   "status": "success",
   "result": {
-    "C3VK": "...",
-    "__client_id": "...",
-    "_uid": "..."
-  }
+    "_uid": "12345",
+    ...
+  },
+  "error": null
 }
 ```
 
-  * **失败响应**：
-
-<!-- end list -->
+示例响应（失败）：
 
 ```json
 {
   "status": "failed",
-  "error": "Login failed, please check credentials or captcha.",
-  "result": null
+  "result": null,
+  "error": "Login failed, please check credentials or captcha."
 }
 ```
 
-### 2\. 获取 VJudge Cookies
+### API 端点详情
 
-该 API 用于通过用户名和密码登录 VJudge，并返回登录成功后的 Cookies。
+1. **洛谷 Cookie 获取**
 
-  * **URL**：`/getvjudgecookie`
-  * **方法**：`POST`
-  * **参数**：
-      * `username`（string）：VJudge 账号的用户名。
-      * `password`（string）：VJudge 账号的密码。
-  * **请求示例**：
+   - **端点**: `POST /get_luogu_cookie`
 
-<!-- end list -->
+   - **描述**: 登录洛谷，处理验证码并返回 Cookie。
 
-```
-curl -X POST "http://127.0.0.1:8000/getvjudgecookie?username=your_username&password=your_password"
-```
+   - **请求示例**:
 
-  * **成功响应**：
+     ```json
+     {
+       "username": "user123",
+       "password": "pass123"
+     }
+     ```
 
-<!-- end list -->
+   - **响应示例**:
 
-```json
-{
-  "status": "success",
-  "result": {
-    "JSESSIONID": "...",
-    "JSESSIONlD": "...",
-    "JSESSlONID": "...",
-    "...": "and more"
-  }
-}
-```
+     ```json
+     {
+       "status": "success",
+       "result": {
+         "_uid": "12345",
+         "session_id": "abc123..."
+       },
+       "error": null
+     }
+     ```
 
-  * **失败响应**：
+2. **VJudge Cookie 获取**
 
-<!-- end list -->
+   - **端点**: `POST /get_vjudge_cookie`
+   - **描述**: 登录 VJudge，处理 Cloudflare 挑战并返回 Cookie。
+   - **请求/响应格式同上**。
 
-```json
-{
-  "status": "failed",
-  "error": "Login failed, please check credentials or captcha.",
-  "result": null
-}
-```
+3. **BeCoder Cookie 获取**
 
------
+   - **端点**: `POST /get_becoder_cookie`
+   - **描述**: 登录 BeCoder，处理验证码并返回 Cookie。
+   - **请求/响应格式同上**。
+
+4. **LibreOJ Local Storage 获取**
+
+   - **端点**: `POST /get_loj_local_stor`
+   - **描述**: 登录 LibreOJ，返回 Local Storage 数据（`appState`）。
+   - **请求/响应格式同上**。
+
+5. **Codeforces Cookie 获取**
+
+   - **端点**: `POST /get_codeforces_cookie`
+   - **描述**: 登录 Codeforces，处理 Cloudflare 挑战并返回 Cookie。
+   - **请求/响应格式同上**。
+
+6. **AtCoder Cookie 获取**
+
+   - **端点**: `POST /get_atcoder_cookie`
+   - **描述**: 登录 AtCoder，处理 Cloudflare 挑战并返回 Cookie。
+   - **请求/响应格式同上**。
+
+7. **USACO Cookie 获取**
+
+   - **端点**: `POST /get_usaco_cookie`
+   - **描述**: 登录 USACO，返回 Cookie。
+   - **请求/响应格式同上**。
+
+8. **UOJ Cookie 获取**
+
+   - **端点**: `POST /get_uoj_cookie`
+   - **描述**: 登录 UOJ，返回 Cookie。
+   - **请求/响应格式同上**。
+
+9. **QOJ Cookie 获取**
+
+   - **端点**: `POST /get_qoj_cookie`
+   - **描述**: 登录 QOJ，返回 Cookie。
+   - **请求/响应格式同上**。
+
+## Docker 部署教程
+
+本服务提供 Docker 镜像 `zhongxiaoma/luogu-cookie-getter:latest`，可快速部署。
+
+### 前置条件
+
+- 安装 Docker（推荐最新版本）。
+- 确保 Docker 守护进程正在运行。
+- 服务器有足够的内存（建议至少 2GB）以支持浏览器自动化。
+
+### 部署步骤
+
+1. **拉取 Docker 镜像**
+
+   ```bash
+   docker pull zhongxiaoma/luogu-cookie-getter:latest
+   ```
+
+2. **运行 Docker 容器**
+
+   ```bash
+   docker run -d -p 8000:8000 --name luogu-cookie-getter zhongxiaoma/luogu-cookie-getter:latest
+   ```
+
+   - `-d`: 后台运行容器。
+   - `-p 8000:8000`: 映射容器内的 8000 端口到宿主机的 8000 端口。
+   - `--name`: 指定容器名称。
+
+3. **验证服务**
+   容器启动后，访问 `http://localhost:8000/docs` 查看 OpenAPI 文档，确认服务正常运行。
+
+4. **停止和删除容器（可选）**
+
+   ```bash
+   docker stop luogu-cookie-getter
+   docker rm luogu-cookie-getter
+   ```
 
 ### 注意事项
 
-  * **并发限制**：项目默认设置了 **5** 个并发任务，以平衡性能和资源消耗。如果需要调整，请修改代码中的 `semaphore` 变量。
-  * **环境依赖**：运行本项目需要安装 DrissionPage 及其依赖的 Chromium 浏览器，以及 DdddOcr 库。
-  * **虚拟显示器**：代码中使用了 `pyvirtualdisplay`，以确保在无头（Headless）环境下，例如在 Linux 服务器上，也能正常运行浏览器。
+- **并发控制**: 服务默认限制 6 个并发任务（通过 `asyncio.Semaphore`），可根据服务器性能调整。
+- **依赖**: 镜像已包含所有依赖（如 DrissionPage、DdddOcr、Chromium 浏览器等）。
+- **日志**: 服务会在控制台输出日志，记录登录尝试、验证码识别和错误信息。
+- **网络**: 确保服务器网络可访问目标网站，且未被屏蔽。
 
-希望这份 README 对您有所帮助！
+## 使用示例
+
+以下是使用 `curl` 调用 API 的示例：
+
+```bash
+curl -X POST "http://localhost:8000/get_luogu_cookie" \
+-H 'accept: application/json' \
+-H 'Content-Type: application/json' \
+-d '{"username": "your_username", "password": "your_password"}'
+```
+
+返回结果：
+
+```json
+{
+  "status": "success",
+  "result": {
+    "_uid": "123456",
+    "somethings": "1145"
+  },
+  "error": null
+}
+```
+
+## 常见问题
+
+1. **登录失败怎么办？**
+   - 检查用户名和密码是否正确。
+   - 验证码识别可能失败，多次重试或检查 OCR 模块（DdddOcr）配置。
+   - 如果涉及 Cloudflare 挑战，确保 `turnstilePatch` 扩展正确加载。
+
+2. **如何调试？**
+   - 查看容器日志：`docker logs luogu-cookie-getter`。
+
+3. **如何扩展支持其他平台？**
+   - 在代码中添加新的 `_get_xxx_cookie` 函数，参考现有实现。
+   - 更新 FastAPI 路由并添加对应的 OpenAPI 文档。
