@@ -88,7 +88,7 @@ curl -X POST "http://127.0.0.1:8000/getvjudgecookie?username=your_username&passw
     "JSESSIONID": "...",
     "JSESSIONlD": "...",
     "JSESSlONID": "...",
-    ...
+    "...": "and more"
   }
 }
 ```
