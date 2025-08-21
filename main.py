@@ -6,7 +6,7 @@ import DrissionPage
 import uvicorn,sys,time
 from pyvirtualdisplay import Display
 
-display = Display(size=(800, 600))
+display = Display(visible=0,size=(1200, 960))
 display.start()
 
 # if platform == "linux" or platform == "linux2":
@@ -140,7 +140,7 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
     
     try:
         page.get("https://vjudge.net/")
-        page.wait.doc_loaded(timeout=7, raise_err=True)
+        page.wait.doc_loaded(timeout=10, raise_err=True)
         page.wait(0.3,0.4)
         # try:
         #     getTurnstileToken(page)
@@ -157,9 +157,11 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
         page.wait(0.2,0.4)
 
         page.ele("@id=btn-login").click()
-
+        # page.wait.ele_displayed("@id=userNameDropdown",timeout=3,raise_err=True)
+        #userNameDropdown
         try:
-            page.wait.ele_displayed("@id=turnstile-container-login",timeout=3,raise_err=True)
+            st=page.wait.ele_displayed("@name=cf-turnstile-response",timeout=3,raise_err=True)
+            print(st)
             try:
                 getTurnstileToken(page)
                 page.wait(0.4)
