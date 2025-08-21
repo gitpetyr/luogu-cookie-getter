@@ -6,7 +6,7 @@ import DrissionPage
 import uvicorn,sys,time
 from pyvirtualdisplay import Display
 
-display = Display(visible=0,size=(1200, 600))
+display = Display(visible=0,size=(1200, 800))
 display.start()
 
 # if platform == "linux" or platform == "linux2":
@@ -130,12 +130,12 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
     """
     co = DrissionPage.ChromiumOptions()
     co.auto_port(True) 
-    co.set_argument('--no-sandbox')
-    co.set_argument('--disable-dev-shm-usage')
     co.add_extension("turnstilePatch")
     # co.headless(True)
     # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
     # co.set_user_agent(User_agent)
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
     page = DrissionPage.ChromiumPage(co)
     
     try:
@@ -183,6 +183,65 @@ def _get_vjudge_cookie(username: str, password: str) -> dict:
         #     pass
 
         cookies = page.cookies() # JSESSIONID JSESSIONlD JSESSlONID
+        res = {dic["name"]: dic["value"] for dic in cookies}
+        return res
+    finally:
+        # 确保浏览器页面在任务结束后关闭
+        page.quit()
+
+def _get_becoder_cookie(username: str, password: str) -> dict:
+    """
+    同步的浏览器操作函数。
+    注意：每个任务都应该创建一个新的 Page 对象来保证隔离性。
+    """
+    co = DrissionPage.ChromiumOptions()
+    co.auto_port(True) 
+    # co.set_user_agent(f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+    # co.set_user_agent(User_agent)
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
+    co.headless(True)
+    # co.set_user_agent()
+    co.add_extension("turnstilePatch")
+    page = DrissionPage.ChromiumPage(co)
+    
+    try:
+        page.get("https://www.becoder.com.cn/login?url=%2Findex")
+        page.wait.doc_loaded(timeout=2, raise_err=True)
+
+        page.ele("@id=username").input(username)
+        page.ele("@id=password").input(password)
+
+        page.wait.ele_displayed("@class=verification-code",timeout=2,raise_err=True)
+
+        # 增加一个短暂的等待，确保验证码元素完全加载
+        page.wait(0.7,0.8) 
+        
+        captcha_img = page.ele("@class=verification-code")
+        print(captcha_img)
+        img = captcha_img.get_screenshot(as_bytes='png')
+        # open("xxx.png","wb").write(img)
+        # print(captcha_img)
+        captcha_input = page.ele("@id=captcha")
+        captcha_code = ocr(img)
+        print(f"User: {username}, Captcha: {captcha_code}")
+        
+        # open("xxx.png","wb").write(captcha_img.src(base64_to_bytes=True)) # 用于调试
+        
+        captcha_input.input(captcha_code)
+        page.ele("@id=login-btn").click()
+
+        try :
+            page.wait.url_change("https://www.becoder.com.cn/index",timeout=4,raise_err=True)
+        except Exception:
+            cookies = page.cookies() #session_token
+            res = {dic["name"]: dic["value"] for dic in cookies}
+            return res
+        # 等待页面跳转和加载完成
+        page.wait.doc_loaded()
+        page.wait(0.4,0.6)
+
+        cookies = page.cookies() #session_token
         res = {dic["name"]: dic["value"] for dic in cookies}
         return res
     finally:
@@ -238,6 +297,31 @@ async def getvjudgecookie(username: str, password: str):
 
         except Exception as e:
             print(f"An error occurred for vjudge user {username}: {e}")
+            return {"status": "failed", "error": str(e), "result": None}
+        
+@app.post("/getbecodercookie")
+async def getbecodercookie(username: str, password: str):
+    # 2. 将 FastAPI 路由改为 async def，使其成为异步函数
+    print(f"Received request for becoder user: {username}. Waiting for a slot...")
+    
+    # 3. 使用 async with 语法来获取信号量，执行完毕后会自动释放
+    async with semaphore:
+        print(f"Slot acquired for becoder user: {username}. Starting browser task...")
+        try:
+            # 4. 使用 asyncio.to_thread 将同步的阻塞函数放到线程池中运行
+            # 这可以防止浏览器操作阻塞 FastAPI 的主事件循环
+            res = await asyncio.to_thread(_get_becoder_cookie, username, password)
+            
+            # 检查登录是否成功
+            if "session_token" not in res or str(res.get("session_token")) == "":
+                print(f"Login failed for becoder user: {username}.")
+                return {"status": "failed", "error": "Login failed, please check credentials or captcha.", "result": res}
+            
+            print(f"Successfully got cookie for becoder user: {username}.")
+            return {"status": "success", "result": res}
+
+        except Exception as e:
+            print(f"An error occurred for becoder user {username}: {e}")
             return {"status": "failed", "error": str(e), "result": None}
 
 # 用于直接运行此文件
