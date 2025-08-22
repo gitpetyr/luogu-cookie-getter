@@ -1,10 +1,10 @@
 # Luogu Cookie Getter API
 
-Luogu Cookie Getter 是一个基于 FastAPI 的自动化服务，用于通过浏览器自动化登录各大在线评测平台（Online Judge, OJ），获取用户认证 Cookie 或 Local Storage 数据。支持并发控制、验证码识别（通过 OCR）以及 Cloudflare Turnstile 挑战处理。
+Luogu Cookie Getter 是一个基于 FastAPI 的自动化服务，用于通过浏览器自动化登录各大网站，获取用户认证 Cookie 或 Local Storage 数据。支持并发控制、验证码识别（通过 OCR）以及 Cloudflare Turnstile 处理。
 
 ## 功能概述
 
-本服务通过模拟浏览器操作，自动完成登录流程，获取用户认证信息（Cookie 或 Local Storage）。支持以下在线评测平台：
+本服务通过模拟浏览器操作，自动完成登录流程，获取用户认证信息（Cookie 或 Local Storage）。支持以下网站：
 
 - 洛谷 (Luogu)
 - VJudge
@@ -20,7 +20,7 @@ Luogu Cookie Getter 是一个基于 FastAPI 的自动化服务，用于通过浏
 
 以下是支持的在线评测平台及其对应的 API 端点和操作说明：
 
-| 平台          | API 端点                      | 操作说明                                                     |
+| 平台          | API 端点                      | 自动执行的操作                                                     |
 | ------------- | ----------------------------- | ------------------------------------------------------------ |
 | 洛谷 (Luogu)  | `POST /get_luogu_cookie`      | 访问登录页面，输入用户名和密码，识别验证码并提交，获取认证 Cookie（包含 `_uid`）。 |
 | VJudge        | `POST /get_vjudge_cookie`     | 访问登录页面，处理可能的 Cloudflare 挑战，输入用户名和密码，获取 Cookie（包含 `JSESSIONlD`）。 |
@@ -38,7 +38,61 @@ Luogu Cookie Getter 是一个基于 FastAPI 的自动化服务，用于通过浏
 - 如果登录失败（例如验证码错误或凭据无效），API 将返回错误信息。
 - 服务使用 OCR（DdddOcr）处理验证码，使用 DrissionPage 模拟浏览器操作。
 
+## Docker 部署教程
+
+本服务提供 Docker 镜像 `zhongxiaoma/luogu-cookie-getter:latest`，可快速部署。
+
+### 前置条件
+
+- 安装 Docker（推荐最新版本）。
+- 确保 Docker 守护进程正在运行。
+- 服务器有足够的内存（建议 2GB 内存？）以支持浏览器自动化。
+
+### 部署步骤
+
+- **拉取 Docker 镜像**
+
+   ```bash
+   docker pull zhongxiaoma/luogu-cookie-getter:latest
+   ```
+
+- **运行 Docker 容器**
+
+   ```bash
+   docker run -d -p 8000:8000 --name luogu-cookie-getter zhongxiaoma/luogu-cookie-getter:latest
+   ```
+
+   - `-d`: 后台运行容器。
+   - `-p 8000:8000`: 映射容器内的 8000 端口到宿主机的 8000 端口。
+   - `--name`: 指定容器名称。
+
+- **验证服务**
+
+   使用 `curl` 调用 API 测试即可：
+  
+   ```bash
+   curl -X POST "http://localhost:8000/get_luogu_cookie" \
+   -H 'accept: application/json' \
+   -H 'Content-Type: application/json' \
+   -d '{"username": "your_luogu_username", "your_luogu_password": "your_password"}'
+   ```
+
+   如果服务运行正常，应该可以看到 `"status": "success"`
+
+- **停止和删除容器（可选）**
+
+   ```bash
+   docker stop luogu-cookie-getter
+   docker rm luogu-cookie-getter
+   ```
+
+
 ## API 文档
+
+> 参考：
+> - http://your-host:your-port/redoc
+> - http://your-host:your-port/docs
+> - http://your-host:your-port/openapi.json
 
 ### 请求格式
 
@@ -66,7 +120,7 @@ Luogu Cookie Getter 是一个基于 FastAPI 的自动化服务，用于通过浏
   "status": "success",
   "result": {
     "_uid": "12345",
-    ...
+    "...": "and anything more"
   },
   "error": null
 }
@@ -160,44 +214,6 @@ Luogu Cookie Getter 是一个基于 FastAPI 的自动化服务，用于通过浏
    - **描述**: 登录 QOJ，返回 Cookie。
    - **请求/响应格式同上**。
 
-## Docker 部署教程
-
-本服务提供 Docker 镜像 `zhongxiaoma/luogu-cookie-getter:latest`，可快速部署。
-
-### 前置条件
-
-- 安装 Docker（推荐最新版本）。
-- 确保 Docker 守护进程正在运行。
-- 服务器有足够的内存（建议至少 2GB）以支持浏览器自动化。
-
-### 部署步骤
-
-1. **拉取 Docker 镜像**
-
-   ```bash
-   docker pull zhongxiaoma/luogu-cookie-getter:latest
-   ```
-
-2. **运行 Docker 容器**
-
-   ```bash
-   docker run -d -p 8000:8000 --name luogu-cookie-getter zhongxiaoma/luogu-cookie-getter:latest
-   ```
-
-   - `-d`: 后台运行容器。
-   - `-p 8000:8000`: 映射容器内的 8000 端口到宿主机的 8000 端口。
-   - `--name`: 指定容器名称。
-
-3. **验证服务**
-   容器启动后，访问 `http://localhost:8000/docs` 查看 OpenAPI 文档，确认服务正常运行。
-
-4. **停止和删除容器（可选）**
-
-   ```bash
-   docker stop luogu-cookie-getter
-   docker rm luogu-cookie-getter
-   ```
-
 ### 注意事项
 
 - **并发控制**: 服务默认限制 6 个并发任务（通过 `asyncio.Semaphore`），可根据服务器性能调整。
@@ -235,10 +251,7 @@ curl -X POST "http://localhost:8000/get_luogu_cookie" \
    - 检查用户名和密码是否正确。
    - 验证码识别可能失败，多次重试或检查 OCR 模块（DdddOcr）配置。
    - 如果涉及 Cloudflare 挑战，确保 `turnstilePatch` 扩展正确加载。
+   - Cloudflare 可能存在 has been blocked 的情况。
 
 2. **如何调试？**
    - 查看容器日志：`docker logs luogu-cookie-getter`。
-
-3. **如何扩展支持其他平台？**
-   - 在代码中添加新的 `_get_xxx_cookie` 函数，参考现有实现。
-   - 更新 FastAPI 路由并添加对应的 OpenAPI 文档。
