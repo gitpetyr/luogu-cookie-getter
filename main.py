@@ -702,6 +702,8 @@ async def get_qoj_cookie(request: LoginRequest = Body(...)):
             print(f"An error occurred for qoj user {username}: {e}")
             return ApiResponse(status="failed", error=str(e))
 
-# 用于直接运行此文件
+# why?
+
+# 用于直接运行此文件 
 if __name__ == "__main__":
     uvicorn.run(app, workers=1, host="0.0.0.0", port=8000)
